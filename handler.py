@@ -1,10 +1,11 @@
-"""RunPod Serverless Handler for FLUX.1-schnell — simple version."""
+"""RunPod Serverless Handler for FLUX.1-schnell — memory-optimized for 24GB GPU."""
 
 import runpod
 import torch
 import base64
 import io
 import os
+import gc
 
 # HuggingFace auth — set HF_TOKEN as env var on RunPod endpoint
 # Required for gated models like FLUX.1-schnell
@@ -13,23 +14,26 @@ import os
 CACHE_DIR = "/runpod-volume/huggingface" if os.path.exists("/runpod-volume") else "/tmp/huggingface"
 os.environ["HF_HOME"] = CACHE_DIR
 os.environ["TRANSFORMERS_CACHE"] = CACHE_DIR
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
 PIPE = None
 
 
 def get_pipe():
-    """Lazy-load model on first request."""
+    """Lazy-load model with memory optimizations for 24GB GPU."""
     global PIPE
     if PIPE is None:
         from diffusers import FluxPipeline
-        print(f"Loading FLUX.1-schnell to {CACHE_DIR}...", flush=True)
+        print(f"Loading FLUX.1-schnell (memory-optimized)...", flush=True)
         PIPE = FluxPipeline.from_pretrained(
             "black-forest-labs/FLUX.1-schnell",
             torch_dtype=torch.bfloat16,
             cache_dir=CACHE_DIR,
         )
-        PIPE.to("cuda")
-        PIPE.enable_attention_slicing()
+        # Critical memory optimizations for 24GB
+        PIPE.enable_model_cpu_offload()
+        PIPE.vae.enable_slicing()
+        PIPE.vae.enable_tiling()
         print("Model ready!", flush=True)
     return PIPE
 
@@ -49,7 +53,7 @@ def handler(job):
         return {"error": "No prompt provided"}
 
     pipe = get_pipe()
-    gen = torch.Generator("cuda").manual_seed(seed) if seed else None
+    gen = torch.Generator("cpu").manual_seed(seed) if seed else None
 
     images = []
     for i in range(num_images):
@@ -65,6 +69,10 @@ def handler(job):
         buf = io.BytesIO()
         result.save(buf, format="PNG")
         images.append({"image_base64": base64.b64encode(buf.getvalue()).decode(), "index": i})
+
+        # Free VRAM between images
+        gc.collect()
+        torch.cuda.empty_cache()
 
     return {"images": images}
 
