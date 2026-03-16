@@ -6,6 +6,9 @@ import base64
 import io
 import os
 
+# HuggingFace auth — set HF_TOKEN as env var on RunPod endpoint
+# Required for gated models like FLUX.1-schnell
+
 # Cache model to network volume if available, otherwise /tmp
 CACHE_DIR = "/runpod-volume/huggingface" if os.path.exists("/runpod-volume") else "/tmp/huggingface"
 os.environ["HF_HOME"] = CACHE_DIR
