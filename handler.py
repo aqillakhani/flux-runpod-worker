@@ -1,67 +1,69 @@
-"""RunPod Serverless Handler for FLUX.1-schnell image generation."""
+"""RunPod Serverless Handler for FLUX.1-schnell — simple version."""
 
 import runpod
 import torch
 import base64
 import io
 import os
-from diffusers import FluxPipeline
+
+# Cache model to network volume if available, otherwise /tmp
+CACHE_DIR = "/runpod-volume/huggingface" if os.path.exists("/runpod-volume") else "/tmp/huggingface"
+os.environ["HF_HOME"] = CACHE_DIR
+os.environ["TRANSFORMERS_CACHE"] = CACHE_DIR
+
+PIPE = None
 
 
-def load_model():
-    """Load FLUX.1-schnell model at startup."""
-    print("Loading FLUX.1-schnell model...")
-    pipe = FluxPipeline.from_pretrained(
-        "black-forest-labs/FLUX.1-schnell",
-        torch_dtype=torch.bfloat16,
-    )
-    pipe.to("cuda")
-    pipe.enable_attention_slicing()
-    print("Model loaded successfully!")
-    return pipe
-
-
-# Load model once at cold start
-PIPE = load_model()
+def get_pipe():
+    """Lazy-load model on first request."""
+    global PIPE
+    if PIPE is None:
+        from diffusers import FluxPipeline
+        print(f"Loading FLUX.1-schnell to {CACHE_DIR}...", flush=True)
+        PIPE = FluxPipeline.from_pretrained(
+            "black-forest-labs/FLUX.1-schnell",
+            torch_dtype=torch.bfloat16,
+            cache_dir=CACHE_DIR,
+        )
+        PIPE.to("cuda")
+        PIPE.enable_attention_slicing()
+        print("Model ready!", flush=True)
+    return PIPE
 
 
 def handler(job):
-    """Handle incoming image generation requests."""
-    job_input = job["input"]
-
-    prompt = job_input.get("prompt", "")
-    width = job_input.get("width", 1024)
-    height = job_input.get("height", 1024)
-    num_inference_steps = job_input.get("num_inference_steps", 4)
-    guidance_scale = job_input.get("guidance_scale", 0.0)
-    num_images = job_input.get("num_images", 1)
-    seed = job_input.get("seed", None)
+    """Generate images from prompt."""
+    inp = job["input"]
+    prompt = inp.get("prompt", "")
+    width = inp.get("width", 1024)
+    height = inp.get("height", 1024)
+    steps = inp.get("num_inference_steps", 4)
+    guidance = inp.get("guidance_scale", 0.0)
+    num_images = inp.get("num_images", 1)
+    seed = inp.get("seed")
 
     if not prompt:
         return {"error": "No prompt provided"}
 
-    generator = None
-    if seed is not None:
-        generator = torch.Generator("cuda").manual_seed(seed)
+    pipe = get_pipe()
+    gen = torch.Generator("cuda").manual_seed(seed) if seed else None
 
-    results = []
+    images = []
     for i in range(num_images):
-        image = PIPE(
+        result = pipe(
             prompt=prompt,
             width=width,
             height=height,
-            num_inference_steps=num_inference_steps,
-            guidance_scale=guidance_scale,
-            generator=generator,
+            num_inference_steps=steps,
+            guidance_scale=guidance,
+            generator=gen,
         ).images[0]
 
-        # Convert to base64
-        buffer = io.BytesIO()
-        image.save(buffer, format="PNG")
-        img_b64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
-        results.append({"image_base64": img_b64, "index": i})
+        buf = io.BytesIO()
+        result.save(buf, format="PNG")
+        images.append({"image_base64": base64.b64encode(buf.getvalue()).decode(), "index": i})
 
-    return {"images": results, "prompt": prompt}
+    return {"images": images}
 
 
 runpod.serverless.start({"handler": handler})
