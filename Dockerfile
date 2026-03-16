@@ -4,9 +4,9 @@ WORKDIR /app
 
 RUN pip install --no-cache-dir \
     runpod \
-    diffusers>=0.30.0 \
-    transformers>=4.44.0 \
-    accelerate \
+    diffusers==0.31.0 \
+    transformers==4.46.0 \
+    accelerate==1.1.0 \
     safetensors \
     sentencepiece \
     protobuf
