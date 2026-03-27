@@ -16,6 +16,14 @@ os.environ["HF_HOME"] = CACHE_DIR
 os.environ["TRANSFORMERS_CACHE"] = CACHE_DIR
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
+# Clean up old schnell model to free disk space for dev
+import shutil
+_OLD_MODEL = os.path.join(CACHE_DIR, "models--black-forest-labs--FLUX.1-schnell")
+if os.path.exists(_OLD_MODEL):
+    print(f"Removing old FLUX.1-schnell cache to free disk space...", flush=True)
+    shutil.rmtree(_OLD_MODEL, ignore_errors=True)
+    print("Old model removed.", flush=True)
+
 PIPE = None
 
 
