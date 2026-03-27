@@ -1,4 +1,4 @@
-"""RunPod Serverless Handler for FLUX.1-schnell — memory-optimized for 24GB GPU."""
+"""RunPod Serverless Handler for FLUX.1-dev — quality-optimized for 48GB GPU."""
 
 import runpod
 import torch
@@ -8,7 +8,7 @@ import os
 import gc
 
 # HuggingFace auth — set HF_TOKEN as env var on RunPod endpoint
-# Required for gated models like FLUX.1-schnell
+# Required for gated models like FLUX.1-dev
 
 # Cache model to network volume if available, otherwise /tmp
 CACHE_DIR = "/runpod-volume/huggingface" if os.path.exists("/runpod-volume") else "/tmp/huggingface"
@@ -20,21 +20,21 @@ PIPE = None
 
 
 def get_pipe():
-    """Lazy-load model with memory optimizations for 24GB GPU."""
+    """Lazy-load FLUX.1-dev with memory optimizations for 48GB GPU."""
     global PIPE
     if PIPE is None:
         from diffusers import FluxPipeline
-        print(f"Loading FLUX.1-schnell (memory-optimized)...", flush=True)
+        print("Loading FLUX.1-dev (quality-optimized)...", flush=True)
         PIPE = FluxPipeline.from_pretrained(
-            "black-forest-labs/FLUX.1-schnell",
+            "black-forest-labs/FLUX.1-dev",
             torch_dtype=torch.bfloat16,
             cache_dir=CACHE_DIR,
         )
-        # Critical memory optimizations for 24GB
+        # Memory optimizations (still useful on 48GB for multi-image batches)
         PIPE.enable_model_cpu_offload()
         PIPE.vae.enable_slicing()
         PIPE.vae.enable_tiling()
-        print("Model ready!", flush=True)
+        print("FLUX.1-dev ready!", flush=True)
     return PIPE
 
 
@@ -44,8 +44,8 @@ def handler(job):
     prompt = inp.get("prompt", "")
     width = inp.get("width", 1024)
     height = inp.get("height", 1024)
-    steps = inp.get("num_inference_steps", 4)
-    guidance = inp.get("guidance_scale", 0.0)
+    steps = inp.get("num_inference_steps", 25)
+    guidance = inp.get("guidance_scale", 5.0)
     num_images = inp.get("num_images", 1)
     seed = inp.get("seed")
 
