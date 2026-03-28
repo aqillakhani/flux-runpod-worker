@@ -7,9 +7,11 @@ RUN pip install --no-cache-dir \
     diffusers==0.31.0 \
     transformers==4.46.0 \
     accelerate==1.1.0 \
+    peft>=0.13.0 \
     safetensors \
     sentencepiece \
-    protobuf
+    protobuf \
+    huggingface_hub
 
 COPY handler.py /app/handler.py
 
